@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import type { FC } from "react";
-import type { ScrapeResult } from "@/lib/mock-data";
-import { Clock, Link2, Image, Type, FileText } from "lucide-react";
+import type { ScrapeResult } from "@/lib/scrape";
+import { Clock, Link2, Image, Type, FileText, TableProperties } from "lucide-react";
 
 interface Props { data: ScrapeResult }
 
@@ -11,6 +11,7 @@ const StatsBar: FC<Props> = ({ data }) => {
     { icon: FileText, label: "Paragraphs", value: data.paragraphs.length },
     { icon: Link2, label: "Links", value: data.links.length },
     { icon: Image, label: "Images", value: data.images.length },
+    { icon: TableProperties, label: "Tables", value: data.tables.length },
     { icon: Clock, label: "Scraped", value: new Date(data.scrapedAt).toLocaleTimeString() },
   ];
 
@@ -18,7 +19,7 @@ const StatsBar: FC<Props> = ({ data }) => {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="grid grid-cols-2 sm:grid-cols-5 gap-3"
+      className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3"
     >
       {stats.map((s, i) => (
         <motion.div

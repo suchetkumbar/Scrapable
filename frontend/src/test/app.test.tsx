@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import App from "@/App";
 
 describe("App", () => {
-  it("renders the Phase 0 foundation view", () => {
+  it("renders the Phase 1 scraping view", () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -31,7 +31,7 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: /^scrapable$/i })).toBeInTheDocument();
-    expect(screen.getByText(/phase 0 foundation ready/i)).toBeInTheDocument();
+    expect(screen.getByText(/phase 1 core scraping engine/i)).toBeInTheDocument();
     fetchSpy.mockRestore();
   });
 });

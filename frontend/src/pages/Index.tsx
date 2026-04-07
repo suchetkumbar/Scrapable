@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Boxes,
+  AlertTriangle,
   CheckCircle2,
   Globe,
-  Play,
+  Link2,
   Server,
   ShieldCheck,
   Sparkles,
@@ -13,16 +13,35 @@ import { toast } from "sonner";
 
 import heroBg from "@/assets/hero-bg.jpg";
 import GlowInput from "@/components/GlowInput";
+import JsonViewer from "@/components/JsonViewer";
+import ResultCards from "@/components/ResultCards";
+import ResultTable from "@/components/ResultTable";
+import ScrapeProgress from "@/components/ScrapeProgress";
+import StatsBar from "@/components/StatsBar";
+import ViewToggle, { type View } from "@/components/ViewToggle";
 import { useBackendHealth } from "@/hooks/use-backend-health";
-import { apiBaseUrl, phaseLabel } from "@/lib/config";
+import { useScrapeUrl } from "@/hooks/use-scrape-url";
+import { apiBaseUrl } from "@/lib/config";
+import type { ScrapeResult } from "@/lib/scrape";
 
-const URL_STORAGE_KEY = "scrapable_phase0_url";
+const PHASE_ONE_STAGES = [
+  "Checking robots.txt...",
+  "Launching browser...",
+  "Rendering page...",
+  "Extracting structured content...",
+];
 
 const Index = () => {
-  const [savedUrl, setSavedUrl] = useState(
-    () => localStorage.getItem(URL_STORAGE_KEY) || ""
-  );
+  const [result, setResult] = useState<ScrapeResult | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [stage, setStage] = useState("");
+  const [view, setView] = useState<View>("cards");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const progressTimerRef = useRef<number | null>(null);
   const healthQuery = useBackendHealth();
+  const scrapeMutation = useScrapeUrl();
+
+  const isLoading = scrapeMutation.isPending;
 
   const backendLabel = healthQuery.isPending
     ? "Checking"
@@ -30,18 +49,62 @@ const Index = () => {
       ? "Connected"
       : "Offline";
 
-  const playwrightLabel = healthQuery.isPending
-    ? "Waiting"
-    : healthQuery.data?.playwright.installed
-      ? "Installed"
-      : "Pending setup";
+  const stopProgress = () => {
+    if (progressTimerRef.current !== null) {
+      window.clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+  };
 
-  const handleQueueUrl = (url: string) => {
-    localStorage.setItem(URL_STORAGE_KEY, url);
-    setSavedUrl(url);
-    toast.success("URL saved for Phase 1", {
-      description: "The target has been validated and stored locally.",
+  const startProgress = () => {
+    stopProgress();
+    setProgress(8);
+    setStage(PHASE_ONE_STAGES[0]);
+
+    let stepIndex = 0;
+    progressTimerRef.current = window.setInterval(() => {
+      stepIndex = Math.min(stepIndex + 1, PHASE_ONE_STAGES.length - 1);
+      setStage(PHASE_ONE_STAGES[stepIndex]);
+      setProgress((current) => Math.min(current + 22, 90));
+    }, 950);
+  };
+
+  useEffect(() => () => stopProgress(), []);
+
+  const handleInvalidUrl = () => {
+    setErrorMessage("Enter a valid absolute URL to begin scraping.");
+    toast.error("Invalid URL", {
+      description: "Enter a valid absolute URL such as https://example.com.",
     });
+  };
+
+  const handleScrape = async (url: string) => {
+    setErrorMessage(null);
+    setResult(null);
+    setView("cards");
+    startProgress();
+
+    try {
+      const scraped = await scrapeMutation.mutateAsync(url);
+      stopProgress();
+      setProgress(100);
+      setStage("Extraction complete.");
+      setResult(scraped);
+
+      toast.success("Scrape complete", {
+        description: `Extracted content from ${new URL(scraped.finalUrl).hostname}.`,
+      });
+    } catch (error) {
+      stopProgress();
+      setProgress(0);
+      setStage("");
+      const message =
+        error instanceof Error ? error.message : "Scraping failed unexpectedly.";
+      setErrorMessage(message);
+      toast.error("Scrape failed", {
+        description: message,
+      });
+    }
   };
 
   return (
@@ -65,13 +128,13 @@ const Index = () => {
           >
             <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-1.5 text-xs text-muted-foreground mb-6">
               <Sparkles className="w-3.5 h-3.5 text-primary" />
-              {phaseLabel} foundation ready for frontend + backend work
+              Phase 1 core scraping engine
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-4">Scrapable</h1>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              The workspace is now split into dedicated frontend, backend, and
-              shared layers with local API wiring, CORS setup, and Playwright
-              runtime support prepared for Phase 1.
+              Render real pages with Playwright, respect robots.txt, and extract
+              structured headings, text, images, links, tables, and metadata
+              through the backend API.
             </p>
           </motion.div>
 
@@ -79,139 +142,214 @@ const Index = () => {
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
+            className="mt-8 flex flex-wrap items-center justify-center gap-3 text-sm"
+          >
+            <div className="glass rounded-full px-4 py-2 flex items-center gap-2">
+              <Server className="w-4 h-4 text-primary" />
+              <span className="text-muted-foreground">Backend</span>
+              <span className="text-foreground font-medium">{backendLabel}</span>
+            </div>
+            <div className="glass rounded-full px-4 py-2 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+              <span className="text-muted-foreground">API</span>
+              <span className="text-foreground font-mono">{apiBaseUrl}</span>
+            </div>
+            <div className="glass rounded-full px-4 py-2 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-primary" />
+              <span className="text-muted-foreground">Browser</span>
+              <span className="text-foreground font-medium">
+                {healthQuery.data?.playwright.installed ? "Ready" : "Check setup"}
+              </span>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
             className="mt-12"
           >
             <GlowInput
-              onSubmit={handleQueueUrl}
-              placeholder="Paste a target URL to validate and save for Phase 1..."
-              buttonLabel="Queue URL"
-              loadingLabel="Saving..."
+              onSubmit={handleScrape}
+              onInvalid={handleInvalidUrl}
+              loading={isLoading}
+              placeholder="Paste any public URL to scrape live content..."
+              buttonLabel="Start Scrape"
+              loadingLabel="Scraping..."
             />
-            <p className="text-center text-xs text-muted-foreground mt-4">
-              {savedUrl
-                ? `Last validated target: ${savedUrl}`
-                : "No target URL saved yet. Queue one now and it will be kept locally for the scraping phase."}
-            </p>
           </motion.div>
 
-          <motion.section
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-12"
-          >
-            <div className="glass rounded-2xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <Boxes className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold">Workspace Layout</h2>
-              </div>
-              <p className="text-2xl font-semibold text-foreground">Structured</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                `frontend/`, `backend/`, and `shared/` are now separated for
-                phase-by-phase development.
-              </p>
-            </div>
+          <AnimatePresence>
+            {isLoading && (
+              <ScrapeProgress
+                progress={progress}
+                stage={stage}
+                steps={PHASE_ONE_STAGES.map((item) => item.replace("...", ""))}
+              />
+            )}
+          </AnimatePresence>
 
-            <div className="glass rounded-2xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <Server className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold">Backend API</h2>
-              </div>
-              <p className="text-2xl font-semibold text-foreground">{backendLabel}</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                {healthQuery.isSuccess
-                  ? `${healthQuery.data.service} is responding at ${apiBaseUrl}.`
-                  : "Run the backend setup scripts, then start the API from the workspace root."}
-              </p>
-            </div>
-
-            <div className="glass rounded-2xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <Play className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold">Playwright</h2>
-              </div>
-              <p className="text-2xl font-semibold text-foreground">{playwrightLabel}</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                {healthQuery.data?.playwright.browser
-                  ? `Configured browser: ${healthQuery.data.playwright.browser}.`
-                  : "Backend runtime will verify the Chromium install once setup is complete."}
-              </p>
-            </div>
-
-            <div className="glass rounded-2xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <ShieldCheck className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold">CORS + Env</h2>
-              </div>
-              <p className="text-2xl font-semibold text-foreground">
-                {healthQuery.data?.allowed_origins.length || 2} origins
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Shared environment values now control the frontend API base URL
-                and backend origin allowlist.
-              </p>
-            </div>
-          </motion.section>
-
-          <motion.section
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="grid grid-cols-1 lg:grid-cols-[1.4fr,0.9fr] gap-6 mt-10"
-          >
-            <div className="glass-strong rounded-3xl p-6 md:p-7">
-              <div className="flex items-center gap-3 mb-5">
-                <Globe className="w-5 h-5 text-primary" />
-                <h2 className="text-xl font-semibold">Phase 0 Status</h2>
-              </div>
-              <div className="space-y-4 text-sm text-muted-foreground">
+          <AnimatePresence>
+            {errorMessage && !isLoading && (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                className="glass rounded-2xl p-5 max-w-3xl mx-auto mt-8 border border-destructive/30"
+              >
                 <div className="flex items-start gap-3">
-                  <CheckCircle2 className="w-4 h-4 text-primary mt-0.5" />
-                  <p>Frontend and backend are now decoupled into dedicated top-level workspaces.</p>
+                  <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-foreground">Scrape failed</p>
+                    <p className="text-sm text-muted-foreground mt-1">{errorMessage}</p>
+                  </div>
                 </div>
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="w-4 h-4 text-primary mt-0.5" />
-                  <p>FastAPI exposes a health endpoint and backend runtime metadata through the shared API layer.</p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="w-4 h-4 text-primary mt-0.5" />
-                  <p>React now reads its API base URL from shared env configuration and can verify backend availability.</p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="w-4 h-4 text-primary mt-0.5" />
-                  <p>The root workspace can boot both services from one command once backend dependencies are installed.</p>
-                </div>
-              </div>
-            </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-            <div className="glass rounded-3xl p-6 md:p-7">
-              <h2 className="text-xl font-semibold mb-5">Foundation Details</h2>
-              <div className="space-y-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">API Base URL</p>
-                  <p className="font-mono text-foreground break-all">{apiBaseUrl}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Health Endpoint</p>
-                  <p className="font-mono text-foreground">{apiBaseUrl}/system/health</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Playwright Path</p>
-                  <p className="font-mono text-foreground break-all">
-                    {healthQuery.data?.playwright.executable_path ||
-                      "Available after Playwright setup runs."}
+          <AnimatePresence>
+            {!result && !isLoading && !errorMessage && (
+              <motion.section
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-10"
+              >
+                <div className="glass rounded-2xl p-5">
+                  <p className="text-sm font-semibold text-foreground mb-2">
+                    Dynamic rendering
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Playwright loads JavaScript-heavy pages before extraction so
+                    modern frontends are handled in the same pipeline.
                   </p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Next Unlock</p>
-                  <p className="text-foreground">
-                    Phase 1 will connect real Playwright scraping behind this
-                    foundation.
+                <div className="glass rounded-2xl p-5">
+                  <p className="text-sm font-semibold text-foreground mb-2">
+                    robots.txt compliance
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Every scrape checks robots.txt first and blocks extraction
+                    when the target explicitly disallows it.
                   </p>
                 </div>
-              </div>
-            </div>
-          </motion.section>
+                <div className="glass rounded-2xl p-5">
+                  <p className="text-sm font-semibold text-foreground mb-2">
+                    Structured output
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Results are normalized into headings, paragraphs, links,
+                    images, tables, and metadata ready for later phases.
+                  </p>
+                </div>
+              </motion.section>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {result && !isLoading && (
+              <motion.section
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-12 space-y-6"
+              >
+                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-3">
+                      <div className="glass rounded-full px-4 py-2 text-sm flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-primary" />
+                        <span className="text-muted-foreground">Final URL</span>
+                        <span className="text-foreground font-mono">
+                          {new URL(result.finalUrl).hostname}
+                        </span>
+                      </div>
+                      <div className="glass rounded-full px-4 py-2 text-sm flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-primary" />
+                        <span className="text-muted-foreground">Robots</span>
+                        <span className="text-foreground font-medium">
+                          {result.robots.allowed ? "Allowed" : "Blocked"}
+                        </span>
+                      </div>
+                      <div className="glass rounded-full px-4 py-2 text-sm flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-primary" />
+                        <span className="text-muted-foreground">HTTP</span>
+                        <span className="text-foreground font-medium">
+                          {result.statusCode ?? "Unknown"}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-semibold text-foreground">
+                        {result.title}
+                      </h2>
+                      <p className="text-sm text-muted-foreground font-mono break-all mt-1">
+                        {result.finalUrl}
+                      </p>
+                    </div>
+                    <p className="text-muted-foreground max-w-3xl">
+                      {result.description}
+                    </p>
+                  </div>
+
+                  <ViewToggle active={view} onChange={setView} />
+                </div>
+
+                <StatsBar data={result} />
+
+                {view === "cards" && <ResultCards data={result} />}
+                {view === "table" && <ResultTable data={result} />}
+                {view === "json" && <JsonViewer data={result} />}
+
+                <div className="grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-6">
+                  <div className="glass rounded-2xl p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Link2 className="w-4 h-4 text-primary" />
+                      <h3 className="text-sm font-semibold text-foreground">
+                        Sample Extracted Links
+                      </h3>
+                    </div>
+                    <div className="space-y-2">
+                      {result.links.slice(0, 8).map((link) => (
+                        <a
+                          key={`${link.href}-${link.text}`}
+                          href={link.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block bg-secondary/40 rounded-lg px-3 py-2 hover:bg-secondary/60 transition-colors"
+                        >
+                          <p className="text-sm text-foreground truncate">{link.text}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {link.href}
+                          </p>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="glass rounded-2xl p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Sparkles className="w-4 h-4 text-primary" />
+                      <h3 className="text-sm font-semibold text-foreground">
+                        Metadata Snapshot
+                      </h3>
+                    </div>
+                    <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                      {result.meta.slice(0, 12).map((item) => (
+                        <div
+                          key={`${item.key}-${item.value}`}
+                          className="bg-secondary/40 rounded-lg px-3 py-2"
+                        >
+                          <p className="text-xs text-muted-foreground">{item.key}</p>
+                          <p className="text-sm text-foreground break-all">{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </motion.section>
+            )}
+          </AnimatePresence>
         </section>
       </main>
     </div>

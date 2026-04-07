@@ -14,7 +14,20 @@ export async function apiRequest<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed with status ${response.status}`);
+    let detail = `API request failed with status ${response.status}`;
+
+    try {
+      const payload = await response.json();
+      if (typeof payload?.detail === "string") {
+        detail = payload.detail;
+      } else if (Array.isArray(payload?.detail)) {
+        detail = "Request validation failed.";
+      }
+    } catch {
+      // Fall back to the generic message when the response body is not JSON.
+    }
+
+    throw new Error(detail);
   }
 
   return (await response.json()) as T;

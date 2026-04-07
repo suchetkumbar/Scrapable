@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import type { FC } from "react";
-import type { ScrapeResult } from "@/lib/mock-data";
+import type { ScrapeResult } from "@/lib/scrape";
 import { ExternalLink, Image, Type, Link2 } from "lucide-react";
 
 interface Props {

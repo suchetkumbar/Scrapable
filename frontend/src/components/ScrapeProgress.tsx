@@ -4,9 +4,12 @@ import type { FC } from "react";
 interface Props {
   progress: number;
   stage: string;
+  steps?: string[];
 }
 
-const ScrapeProgress: FC<Props> = ({ progress, stage }) => (
+const DEFAULT_STEPS = ["Fetching", "Parsing", "Structuring", "Finalizing"];
+
+const ScrapeProgress: FC<Props> = ({ progress, stage, steps = DEFAULT_STEPS }) => (
   <motion.div
     initial={{ opacity: 0, height: 0 }}
     animate={{ opacity: 1, height: "auto" }}
@@ -26,13 +29,18 @@ const ScrapeProgress: FC<Props> = ({ progress, stage }) => (
           transition={{ duration: 0.3 }}
         />
       </div>
-      <div className="flex gap-4 mt-3">
-        {["Fetching", "Parsing", "AI Analysis", "Structuring"].map((s, i) => (
-          <div key={s} className="flex items-center gap-1.5 text-xs">
-            <div className={`w-2 h-2 rounded-full ${progress > i * 25 ? "bg-primary" : "bg-secondary"}`} />
-            <span className={progress > i * 25 ? "text-foreground" : "text-muted-foreground"}>{s}</span>
-          </div>
-        ))}
+      <div className="flex gap-4 mt-3 flex-wrap">
+        {steps.map((item, index) => {
+          const threshold = (index / steps.length) * 100;
+          const active = progress > threshold;
+
+          return (
+            <div key={item} className="flex items-center gap-1.5 text-xs">
+              <div className={`w-2 h-2 rounded-full ${active ? "bg-primary" : "bg-secondary"}`} />
+              <span className={active ? "text-foreground" : "text-muted-foreground"}>{item}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   </motion.div>

@@ -8,6 +8,7 @@ interface Props {
   placeholder?: string;
   buttonLabel?: string;
   loadingLabel?: string;
+  onInvalid?: (value: string) => void;
 }
 
 const GlowInput: FC<Props> = ({
@@ -16,6 +17,7 @@ const GlowInput: FC<Props> = ({
   placeholder = "Paste any URL to start scraping...",
   buttonLabel = "Scrape",
   loadingLabel = "Working...",
+  onInvalid,
 }) => {
   const [v, setV] = useState("");
   const [focused, setFocused] = useState(false);
@@ -28,7 +30,7 @@ const GlowInput: FC<Props> = ({
       new URL(url);
       onSubmit(url);
     } catch {
-      /* invalid */
+      onInvalid?.(v.trim());
     }
   };
 
