@@ -5,9 +5,18 @@ import { Search, Globe, Loader2 } from "lucide-react";
 interface Props {
   onSubmit: (url: string) => void;
   loading?: boolean;
+  placeholder?: string;
+  buttonLabel?: string;
+  loadingLabel?: string;
 }
 
-const GlowInput: FC<Props> = ({ onSubmit, loading }) => {
+const GlowInput: FC<Props> = ({
+  onSubmit,
+  loading,
+  placeholder = "Paste any URL to start scraping...",
+  buttonLabel = "Scrape",
+  loadingLabel = "Working...",
+}) => {
   const [v, setV] = useState("");
   const [focused, setFocused] = useState(false);
 
@@ -41,7 +50,7 @@ const GlowInput: FC<Props> = ({ onSubmit, loading }) => {
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onKeyDown={onKey}
-          placeholder="Paste any URL to start scraping..."
+          placeholder={placeholder}
           className="flex-1 bg-transparent outline-none text-foreground placeholder:text-muted-foreground text-lg"
           disabled={loading}
         />
@@ -53,7 +62,7 @@ const GlowInput: FC<Props> = ({ onSubmit, loading }) => {
           className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-medium text-sm disabled:opacity-40 flex items-center gap-2"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-          {loading ? "Scraping..." : "Scrape"}
+          {loading ? loadingLabel : buttonLabel}
         </motion.button>
       </div>
     </motion.div>

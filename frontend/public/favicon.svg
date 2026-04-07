@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="scrapable-gradient" x1="10" y1="10" x2="54" y2="54" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C084FC" />
+      <stop offset="1" stop-color="#60A5FA" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#09090B" />
+  <path
+    d="M45.5 18H26.5C21.8056 18 18 21.8056 18 26.5C18 31.1944 21.8056 35 26.5 35H37.5C40.5376 35 43 37.4624 43 40.5C43 43.5376 40.5376 46 37.5 46H18.5"
+    stroke="url(#scrapable-gradient)"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
