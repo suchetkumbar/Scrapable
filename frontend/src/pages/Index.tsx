@@ -31,17 +31,27 @@ const PHASE_ONE_STAGES = [
   "Extracting structured content...",
 ];
 
+const getHostname = (value: string) => {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return value;
+  }
+};
+
 const Index = () => {
   const [result, setResult] = useState<ScrapeResult | null>(null);
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState("");
   const [view, setView] = useState<View>("cards");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isScraping, setIsScraping] = useState(false);
+  const activeScrapeRef = useRef(false);
   const progressTimerRef = useRef<number | null>(null);
   const healthQuery = useBackendHealth();
   const scrapeMutation = useScrapeUrl();
 
-  const isLoading = scrapeMutation.isPending;
+  const isLoading = isScraping;
 
   const backendLabel = healthQuery.isPending
     ? "Checking"
@@ -79,6 +89,10 @@ const Index = () => {
   };
 
   const handleScrape = async (url: string) => {
+    if (activeScrapeRef.current) return;
+
+    activeScrapeRef.current = true;
+    setIsScraping(true);
     setErrorMessage(null);
     setResult(null);
     setView("cards");
@@ -92,7 +106,7 @@ const Index = () => {
       setResult(scraped);
 
       toast.success("Scrape complete", {
-        description: `Extracted content from ${new URL(scraped.finalUrl).hostname}.`,
+        description: `Extracted content from ${getHostname(scraped.finalUrl)}.`,
       });
     } catch (error) {
       stopProgress();
@@ -104,6 +118,10 @@ const Index = () => {
       toast.error("Scrape failed", {
         description: message,
       });
+    } finally {
+      activeScrapeRef.current = false;
+      setIsScraping(false);
+      scrapeMutation.reset();
     }
   };
 
@@ -261,7 +279,7 @@ const Index = () => {
                         <Globe className="w-4 h-4 text-primary" />
                         <span className="text-muted-foreground">Final URL</span>
                         <span className="text-foreground font-mono">
-                          {new URL(result.finalUrl).hostname}
+                          {getHostname(result.finalUrl)}
                         </span>
                       </div>
                       <div className="glass rounded-full px-4 py-2 text-sm flex items-center gap-2">
