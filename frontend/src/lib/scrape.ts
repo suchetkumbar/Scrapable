@@ -26,6 +26,22 @@ export interface RobotsStatus {
   status: string;
 }
 
+export interface ClassificationAlternative {
+  key: string;
+  label: string;
+  confidence: number;
+}
+
+export interface ClassificationResult {
+  key: string;
+  label: string;
+  confidence: number;
+  heuristicScore: number;
+  semanticScore: number;
+  rationale: string[];
+  alternatives: ClassificationAlternative[];
+}
+
 export interface ScrapeResult {
   url: string;
   finalUrl: string;
@@ -39,6 +55,7 @@ export interface ScrapeResult {
   meta: ScrapedMeta[];
   statusCode: number | null;
   robots: RobotsStatus;
+  classification: ClassificationResult;
   scrapedAt: string;
 }
 
@@ -55,6 +72,15 @@ interface ScrapeApiResponse {
   meta: ScrapedMeta[];
   status_code: number | null;
   robots: RobotsStatus;
+  classification: {
+    key: string;
+    label: string;
+    confidence: number;
+    heuristic_score: number;
+    semantic_score: number;
+    rationale: string[];
+    alternatives: ClassificationAlternative[];
+  };
   scraped_at: string;
 }
 
@@ -80,6 +106,15 @@ export async function scrapeUrl(url: string): Promise<ScrapeResult> {
     meta: response.meta,
     statusCode: response.status_code,
     robots: response.robots,
+    classification: {
+      key: response.classification.key,
+      label: response.classification.label,
+      confidence: response.classification.confidence,
+      heuristicScore: response.classification.heuristic_score,
+      semanticScore: response.classification.semantic_score,
+      rationale: response.classification.rationale,
+      alternatives: response.classification.alternatives,
+    },
     scrapedAt: response.scraped_at,
   };
 }

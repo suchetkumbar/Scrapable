@@ -18,6 +18,7 @@ from backend.app.schemas.scrape import (
     ScrapedMeta,
     ScrapedTable,
 )
+from backend.app.services.categorizer import classify_scrape
 from backend.app.services.robots import RobotsCheckResult, check_robots_allowed
 from backend.app.services.playwright_runtime import inspect_playwright
 
@@ -81,6 +82,48 @@ EXTRACTION_SCRIPT = """
     }))
     .filter((table) => table.rows.length > 0);
 
+  const bodyText = clean(document.body?.innerText || "");
+  const schemaTypes = (() => {
+    const values = new Set();
+    const registerType = (value) => {
+      if (!value) return;
+      if (Array.isArray(value)) {
+        value.forEach(registerType);
+        return;
+      }
+
+      if (typeof value === "string") {
+        const normalized = clean(value).replace(/^https?:\\/\\/schema.org\\//i, "");
+        if (normalized) values.add(normalized.toLowerCase());
+      }
+    };
+
+    const visit = (value) => {
+      if (!value || typeof value !== "object") return;
+      if (Array.isArray(value)) {
+        value.forEach(visit);
+        return;
+      }
+
+      registerType(value["@type"]);
+      Object.values(value).forEach(visit);
+    };
+
+    Array.from(document.querySelectorAll('script[type="application/ld+json"]')).forEach((script) => {
+      try {
+        visit(JSON.parse(script.textContent || "null"));
+      } catch {
+        // Ignore malformed schema blobs.
+      }
+    });
+
+    return Array.from(values);
+  })();
+
+  const priceMentionCount = (
+    bodyText.match(/(?:₹|\\$|€|£|rs\\.?|usd|eur|gbp|inr)\\s?\\d[\\d,]*(?:\\.\\d{1,2})?/gi) || []
+  ).length;
+
   return {
     title: clean(document.title),
     description: findMeta("description", "og:description", "twitter:description"),
@@ -90,6 +133,18 @@ EXTRACTION_SCRIPT = """
     images,
     tables,
     meta,
+    analysis: {
+      schemaTypes,
+      counts: {
+        articleCount: document.querySelectorAll("article").length,
+        codeBlockCount: document.querySelectorAll("pre, code").length,
+        formCount: document.querySelectorAll("form").length,
+        navLinkCount: document.querySelectorAll("nav a, aside a").length,
+        timeCount: document.querySelectorAll("time").length,
+        videoEmbedCount: document.querySelectorAll("video, iframe[src*='youtube'], iframe[src*='vimeo'], iframe[src*='dailymotion']").length,
+        priceMentionCount,
+      },
+    },
   };
 }
 """
@@ -220,23 +275,46 @@ def scrape_page(request: ScrapeRequest, browser_name: str) -> ScrapeResponse:
             except Exception:
                 pass
 
+    title = _resolve_title(raw_result, final_url)
+    description = _resolve_description(raw_result)
+    headings = _dedupe_texts(raw_result.get("headings", []), request.max_items, 2)
+    paragraphs = _dedupe_texts(raw_result.get("paragraphs", []), request.max_items, 30)
+    images = _normalize_images(raw_result.get("images", []), request.max_items)
+    links = _normalize_links(raw_result.get("links", []), request.max_items)
+    tables = _normalize_tables(raw_result.get("tables", []))
+    meta = _normalize_meta(raw_result.get("meta", []), robots, status_code)
+    classification = classify_scrape(
+        url=target_url,
+        final_url=final_url,
+        title=title,
+        description=description,
+        headings=headings,
+        paragraphs=paragraphs,
+        images=images,
+        links=links,
+        tables=tables,
+        meta=meta,
+        raw_result=raw_result,
+    )
+
     return ScrapeResponse(
         url=target_url,
         final_url=final_url,
-        title=_resolve_title(raw_result, final_url),
-        description=_resolve_description(raw_result),
-        headings=_dedupe_texts(raw_result.get("headings", []), request.max_items, 2),
-        paragraphs=_dedupe_texts(raw_result.get("paragraphs", []), request.max_items, 30),
-        images=_normalize_images(raw_result.get("images", []), request.max_items),
-        links=_normalize_links(raw_result.get("links", []), request.max_items),
-        tables=_normalize_tables(raw_result.get("tables", [])),
-        meta=_normalize_meta(raw_result.get("meta", []), robots, status_code),
+        title=title,
+        description=description,
+        headings=headings,
+        paragraphs=paragraphs,
+        images=images,
+        links=links,
+        tables=tables,
+        meta=meta,
         status_code=status_code,
         robots=RobotsReport(
             url=robots.url,
             allowed=robots.allowed,
             status=robots.status,
         ),
+        classification=classification,
         scraped_at=datetime.now(timezone.utc),
     )
 

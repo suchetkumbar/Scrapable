@@ -36,6 +36,22 @@ class RobotsReport(BaseModel):
     status: str
 
 
+class ClassificationAlternative(BaseModel):
+    key: str
+    label: str
+    confidence: float = Field(ge=0, le=1)
+
+
+class ClassificationReport(BaseModel):
+    key: str
+    label: str
+    confidence: float = Field(ge=0, le=1)
+    heuristic_score: float = Field(ge=0)
+    semantic_score: float = Field(ge=0)
+    rationale: list[str]
+    alternatives: list[ClassificationAlternative]
+
+
 class ScrapeResponse(BaseModel):
     url: str
     final_url: str
@@ -49,4 +65,5 @@ class ScrapeResponse(BaseModel):
     meta: list[ScrapedMeta]
     status_code: int | None
     robots: RobotsReport
+    classification: ClassificationReport
     scraped_at: datetime

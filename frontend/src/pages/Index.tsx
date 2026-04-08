@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 
 import heroBg from "@/assets/hero-bg.jpg";
+import ClassificationPanel from "@/components/ClassificationPanel";
 import GlowInput from "@/components/GlowInput";
 import JsonViewer from "@/components/JsonViewer";
 import ResultCards from "@/components/ResultCards";
@@ -146,13 +147,13 @@ const Index = () => {
           >
             <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-1.5 text-xs text-muted-foreground mb-6">
               <Sparkles className="w-3.5 h-3.5 text-primary" />
-              Phase 1 core scraping engine
+              Phase 3 auto-categorization engine
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-4">Scrapable</h1>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              Render real pages with Playwright, respect robots.txt, and extract
-              structured headings, text, images, links, tables, and metadata
-              through the backend API.
+              Render real pages with Playwright, respect robots.txt, extract
+              structured content, and classify website intent with structural
+              plus semantic analysis through the backend API.
             </p>
           </motion.div>
 
@@ -283,6 +284,13 @@ const Index = () => {
                         </span>
                       </div>
                       <div className="glass rounded-full px-4 py-2 text-sm flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-primary" />
+                        <span className="text-muted-foreground">Category</span>
+                        <span className="text-foreground font-medium">
+                          {result.classification.label}
+                        </span>
+                      </div>
+                      <div className="glass rounded-full px-4 py-2 text-sm flex items-center gap-2">
                         <ShieldCheck className="w-4 h-4 text-primary" />
                         <span className="text-muted-foreground">Robots</span>
                         <span className="text-foreground font-medium">
@@ -312,6 +320,8 @@ const Index = () => {
 
                   <ViewToggle active={view} onChange={setView} />
                 </div>
+
+                <ClassificationPanel classification={result.classification} />
 
                 <StatsBar data={result} />
 
