@@ -5,13 +5,22 @@ export async function apiRequest<T>(
   init?: RequestInit
 ): Promise<T> {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const response = await fetch(`${apiBaseUrl}${normalizedPath}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...init?.headers,
-    },
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${apiBaseUrl}${normalizedPath}`, {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...init?.headers,
+      },
+    });
+  } catch (error) {
+    throw new Error(
+      "Could not reach the backend API. Check that the backend is running, then retry and inspect the backend terminal for scrape errors.",
+      { cause: error }
+    );
+  }
 
   if (!response.ok) {
     let detail = `API request failed with status ${response.status}`;

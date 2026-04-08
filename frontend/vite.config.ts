@@ -5,6 +5,9 @@ import path from "path";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, path.resolve(__dirname, ".."), "");
+  const backendHost = env.SCRAPABLE_BACKEND_HOST || "127.0.0.1";
+  const backendPort = env.SCRAPABLE_BACKEND_PORT || "8000";
+  const backendTarget = `http://${backendHost}:${backendPort}`;
 
   return {
     envDir: "..",
@@ -13,6 +16,12 @@ export default defineConfig(({ mode }) => {
       port: Number(env.SCRAPABLE_FRONTEND_PORT || 5173),
       hmr: {
         overlay: false,
+      },
+      proxy: {
+        "/api": {
+          target: backendTarget,
+          changeOrigin: true,
+        },
       },
     },
     plugins: [react()],

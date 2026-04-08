@@ -19,6 +19,7 @@ from backend.app.schemas.scrape import (
     ScrapedTable,
 )
 from backend.app.services.robots import RobotsCheckResult, check_robots_allowed
+from backend.app.services.playwright_runtime import inspect_playwright
 
 EXTRACTION_SCRIPT = """
 () => {
@@ -112,6 +113,11 @@ class PageFetchError(ScraperError):
     status_code: int
 
 
+@dataclass
+class BlockedAccessError(ScraperError):
+    status_code: int
+
+
 class ScrapeTimeoutError(ScraperError):
     pass
 
@@ -130,8 +136,17 @@ def scrape_page(request: ScrapeRequest, browser_name: str) -> ScrapeResponse:
             robots=robots,
         )
 
+    runtime = inspect_playwright(browser_name)
+    if not runtime.installed:
+        raise PlaywrightUnavailableError(
+            runtime.error or "Playwright browser binaries are not installed."
+        )
+
     browser = None
     context = None
+    status_code: int | None = None
+    final_url = target_url
+    raw_result: dict[str, Any] = {}
 
     try:
         with sync_playwright() as playwright:
@@ -165,29 +180,45 @@ def scrape_page(request: ScrapeRequest, browser_name: str) -> ScrapeResponse:
                 ) from exc
 
             status_code = response.status if response else None
+            if status_code in {401, 403, 429}:
+                raise BlockedAccessError(
+                    message=f"Access was blocked by the target website (HTTP {status_code}).",
+                    status_code=status_code,
+                )
+
             if status_code and status_code >= 400:
                 raise PageFetchError(
                     message=f"Target page responded with status {status_code}.",
                     status_code=status_code,
                 )
 
-            raw_result = page.evaluate(EXTRACTION_SCRIPT)
+            extracted = page.evaluate(EXTRACTION_SCRIPT)
+            if isinstance(extracted, dict):
+                raw_result = extracted
             final_url = page.url
     except PlaywrightUnavailableError:
+        raise
+    except BlockedAccessError:
         raise
     except PageFetchError:
         raise
     except ScrapeTimeoutError:
         raise
-    except PlaywrightError as exc:
+    except (PlaywrightError, OSError) as exc:
         raise PlaywrightUnavailableError(
-            "Playwright could not launch a browser. Run 'npm run setup:playwright' and retry."
+            "Playwright could not launch a browser. Confirm 'npm run setup:playwright' completed and restart the backend."
         ) from exc
     finally:
         if context is not None:
-            context.close()
+            try:
+                context.close()
+            except Exception:
+                pass
         if browser is not None:
-            browser.close()
+            try:
+                browser.close()
+            except Exception:
+                pass
 
     return ScrapeResponse(
         url=target_url,
