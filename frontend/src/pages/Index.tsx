@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Globe,
+  Layers3,
   Link2,
   Server,
   ShieldCheck,
@@ -15,22 +16,32 @@ import heroBg from "@/assets/hero-bg.jpg";
 import ClassificationPanel from "@/components/ClassificationPanel";
 import GlowInput from "@/components/GlowInput";
 import JsonViewer from "@/components/JsonViewer";
+import PaginationControls from "@/components/PaginationControls";
+import PaginationPanel from "@/components/PaginationPanel";
 import ResultCards from "@/components/ResultCards";
 import ResultTable from "@/components/ResultTable";
 import ScrapeProgress from "@/components/ScrapeProgress";
 import StatsBar from "@/components/StatsBar";
 import ViewToggle, { type View } from "@/components/ViewToggle";
 import { useBackendHealth } from "@/hooks/use-backend-health";
-import { useScrapeUrl } from "@/hooks/use-scrape-url";
+import { useScrapeJob } from "@/hooks/use-scrape-job";
 import { apiBaseUrl } from "@/lib/config";
-import type { ScrapeResult } from "@/lib/scrape";
+import {
+  getScrapeJob,
+  type PaginationMode,
+  type ScrapeJobStatus,
+  type ScrapeResult,
+} from "@/lib/scrape";
 
-const PHASE_ONE_STAGES = [
-  "Checking robots.txt...",
-  "Launching browser...",
-  "Rendering page...",
-  "Extracting structured content...",
+const PHASE_FOUR_STEPS = [
+  "Queue job",
+  "Check robots",
+  "Render page",
+  "Paginate",
+  "Aggregate",
 ];
+
+const POLL_INTERVAL_MS = 850;
 
 const getHostname = (value: string) => {
   try {
@@ -40,6 +51,8 @@ const getHostname = (value: string) => {
   }
 };
 
+const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
 const Index = () => {
   const [result, setResult] = useState<ScrapeResult | null>(null);
   const [progress, setProgress] = useState(0);
@@ -47,12 +60,15 @@ const Index = () => {
   const [view, setView] = useState<View>("cards");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isScraping, setIsScraping] = useState(false);
-  const activeScrapeRef = useRef(false);
-  const progressTimerRef = useRef<number | null>(null);
-  const healthQuery = useBackendHealth();
-  const scrapeMutation = useScrapeUrl();
+  const [paginationMode, setPaginationMode] = useState<PaginationMode>("current");
+  const [pageLimit, setPageLimit] = useState(3);
+  const [enableInfiniteScroll, setEnableInfiniteScroll] = useState(true);
+  const [jobStatus, setJobStatus] = useState<ScrapeJobStatus | null>(null);
 
-  const isLoading = isScraping;
+  const activeScrapeRef = useRef(false);
+  const activeJobIdRef = useRef<string | null>(null);
+  const healthQuery = useBackendHealth();
+  const startJobMutation = useScrapeJob();
 
   const backendLabel = healthQuery.isPending
     ? "Checking"
@@ -60,27 +76,18 @@ const Index = () => {
       ? "Connected"
       : "Offline";
 
-  const stopProgress = () => {
-    if (progressTimerRef.current !== null) {
-      window.clearInterval(progressTimerRef.current);
-      progressTimerRef.current = null;
-    }
+  useEffect(() => {
+    return () => {
+      activeJobIdRef.current = null;
+      activeScrapeRef.current = false;
+    };
+  }, []);
+
+  const syncJobStatus = (status: ScrapeJobStatus) => {
+    setJobStatus(status);
+    setProgress(status.progress);
+    setStage(status.stage);
   };
-
-  const startProgress = () => {
-    stopProgress();
-    setProgress(8);
-    setStage(PHASE_ONE_STAGES[0]);
-
-    let stepIndex = 0;
-    progressTimerRef.current = window.setInterval(() => {
-      stepIndex = Math.min(stepIndex + 1, PHASE_ONE_STAGES.length - 1);
-      setStage(PHASE_ONE_STAGES[stepIndex]);
-      setProgress((current) => Math.min(current + 22, 90));
-    }, 950);
-  };
-
-  useEffect(() => () => stopProgress(), []);
 
   const handleInvalidUrl = () => {
     setErrorMessage("Enter a valid absolute URL to begin scraping.");
@@ -89,40 +96,73 @@ const Index = () => {
     });
   };
 
+  const pollUntilComplete = async (jobId: string): Promise<ScrapeResult> => {
+    while (activeJobIdRef.current === jobId) {
+      const status = await getScrapeJob(jobId);
+      syncJobStatus(status);
+
+      if (status.state === "completed" && status.result) {
+        return status.result;
+      }
+
+      if (status.state === "completed") {
+        throw new Error("Scrape completed without a result payload.");
+      }
+
+      if (status.state === "failed") {
+        throw new Error(status.error || "Pagination scrape failed unexpectedly.");
+      }
+
+      await delay(POLL_INTERVAL_MS);
+    }
+
+    throw new Error("Pagination scrape was interrupted before completion.");
+  };
+
   const handleScrape = async (url: string) => {
     if (activeScrapeRef.current) return;
 
     activeScrapeRef.current = true;
+    activeJobIdRef.current = null;
     setIsScraping(true);
     setErrorMessage(null);
     setResult(null);
+    setJobStatus(null);
     setView("cards");
-    startProgress();
+    setProgress(2);
+    setStage("Submitting pagination scrape job...");
 
     try {
-      const scraped = await scrapeMutation.mutateAsync(url);
-      stopProgress();
-      setProgress(100);
-      setStage("Extraction complete.");
-      setResult(scraped);
+      const job = await startJobMutation.mutateAsync({
+        url,
+        paginationMode,
+        pageLimit,
+        enableInfiniteScroll,
+      });
+      activeJobIdRef.current = job.jobId;
+      syncJobStatus(job);
 
+      const scraped = await pollUntilComplete(job.jobId);
+      setResult(scraped);
       toast.success("Scrape complete", {
-        description: `Extracted content from ${getHostname(scraped.finalUrl)}.`,
+        description: `Scraped ${scraped.pagination.pagesScraped} page${
+          scraped.pagination.pagesScraped === 1 ? "" : "s"
+        } from ${getHostname(scraped.finalUrl)}.`,
       });
     } catch (error) {
-      stopProgress();
-      setProgress(0);
-      setStage("");
       const message =
         error instanceof Error ? error.message : "Scraping failed unexpectedly.";
       setErrorMessage(message);
       toast.error("Scrape failed", {
         description: message,
       });
+      setProgress(0);
+      setStage("");
     } finally {
       activeScrapeRef.current = false;
+      activeJobIdRef.current = null;
       setIsScraping(false);
-      scrapeMutation.reset();
+      startJobMutation.reset();
     }
   };
 
@@ -147,13 +187,13 @@ const Index = () => {
           >
             <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-1.5 text-xs text-muted-foreground mb-6">
               <Sparkles className="w-3.5 h-3.5 text-primary" />
-              Phase 3 auto-categorization engine
+              Phase 4 pagination control system
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-4">Scrapable</h1>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              Render real pages with Playwright, respect robots.txt, extract
-              structured content, and classify website intent with structural
-              plus semantic analysis through the backend API.
+              Render real pages with Playwright, classify website intent, and
+              follow next-page, numbered-pagination, and infinite-scroll flows
+              with controlled page limits through the backend API.
             </p>
           </motion.div>
 
@@ -191,25 +231,39 @@ const Index = () => {
             <GlowInput
               onSubmit={handleScrape}
               onInvalid={handleInvalidUrl}
-              loading={isLoading}
+              loading={isScraping}
               placeholder="Paste any public URL to scrape live content..."
               buttonLabel="Start Scrape"
               loadingLabel="Scraping..."
             />
+            <PaginationControls
+              mode={paginationMode}
+              pageLimit={pageLimit}
+              enableInfiniteScroll={enableInfiniteScroll}
+              disabled={isScraping}
+              onModeChange={setPaginationMode}
+              onPageLimitChange={(value) =>
+                setPageLimit(Math.min(10, Math.max(1, Number.isFinite(value) ? value : 1)))
+              }
+              onInfiniteScrollChange={setEnableInfiniteScroll}
+            />
           </motion.div>
 
           <AnimatePresence>
-            {isLoading && (
+            {isScraping && (
               <ScrapeProgress
                 progress={progress}
                 stage={stage}
-                steps={PHASE_ONE_STAGES.map((item) => item.replace("...", ""))}
+                steps={PHASE_FOUR_STEPS}
+                pagesCompleted={jobStatus?.pagesCompleted ?? 0}
+                pagesTarget={jobStatus?.pagesTarget ?? (paginationMode === "current" ? 1 : paginationMode === "next" ? 2 : pageLimit)}
+                modeLabel={formatModeLabel(jobStatus?.mode ?? paginationMode)}
               />
             )}
           </AnimatePresence>
 
           <AnimatePresence>
-            {errorMessage && !isLoading && (
+            {errorMessage && !isScraping && (
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -228,7 +282,7 @@ const Index = () => {
           </AnimatePresence>
 
           <AnimatePresence>
-            {!result && !isLoading && !errorMessage && (
+            {!result && !isScraping && !errorMessage && (
               <motion.section
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -237,29 +291,29 @@ const Index = () => {
               >
                 <div className="glass rounded-2xl p-5">
                   <p className="text-sm font-semibold text-foreground mb-2">
-                    Dynamic rendering
+                    Controlled pagination
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Playwright loads JavaScript-heavy pages before extraction so
-                    modern frontends are handled in the same pipeline.
+                    Choose whether to scrape only the current page, the next page,
+                    or every detected page up to your limit.
                   </p>
                 </div>
                 <div className="glass rounded-2xl p-5">
                   <p className="text-sm font-semibold text-foreground mb-2">
-                    robots.txt compliance
+                    Infinite-scroll support
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Every scrape checks robots.txt first and blocks extraction
-                    when the target explicitly disallows it.
+                    The scraper expands lazy-loaded content and load-more
+                    surfaces before extracting structured data.
                   </p>
                 </div>
                 <div className="glass rounded-2xl p-5">
                   <p className="text-sm font-semibold text-foreground mb-2">
-                    Structured output
+                    Multi-page visibility
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Results are normalized into headings, paragraphs, links,
-                    images, tables, and metadata ready for later phases.
+                    Track pages visited, detected pagination controls, and per-page
+                    extraction counts in a single result view.
                   </p>
                 </div>
               </motion.section>
@@ -267,7 +321,7 @@ const Index = () => {
           </AnimatePresence>
 
           <AnimatePresence>
-            {result && !isLoading && (
+            {result && !isScraping && (
               <motion.section
                 initial={{ opacity: 0, y: 18 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -281,6 +335,13 @@ const Index = () => {
                         <span className="text-muted-foreground">Final URL</span>
                         <span className="text-foreground font-mono">
                           {getHostname(result.finalUrl)}
+                        </span>
+                      </div>
+                      <div className="glass rounded-full px-4 py-2 text-sm flex items-center gap-2">
+                        <Layers3 className="w-4 h-4 text-primary" />
+                        <span className="text-muted-foreground">Pages</span>
+                        <span className="text-foreground font-medium">
+                          {result.pagination.pagesScraped}/{result.pagination.pagesRequested}
                         </span>
                       </div>
                       <div className="glass rounded-full px-4 py-2 text-sm flex items-center gap-2">
@@ -321,8 +382,8 @@ const Index = () => {
                   <ViewToggle active={view} onChange={setView} />
                 </div>
 
+                <PaginationPanel pagination={result.pagination} />
                 <ClassificationPanel classification={result.classification} />
-
                 <StatsBar data={result} />
 
                 {view === "cards" && <ResultCards data={result} />}
@@ -383,5 +444,11 @@ const Index = () => {
     </div>
   );
 };
+
+function formatModeLabel(mode: PaginationMode) {
+  if (mode === "current") return "Current page";
+  if (mode === "next") return "Current + next";
+  return "All pages";
+}
 
 export default Index;

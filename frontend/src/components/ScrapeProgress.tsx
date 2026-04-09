@@ -5,11 +5,21 @@ interface Props {
   progress: number;
   stage: string;
   steps?: string[];
+  pagesCompleted?: number;
+  pagesTarget?: number;
+  modeLabel?: string;
 }
 
 const DEFAULT_STEPS = ["Fetching", "Parsing", "Structuring", "Finalizing"];
 
-const ScrapeProgress: FC<Props> = ({ progress, stage, steps = DEFAULT_STEPS }) => (
+const ScrapeProgress: FC<Props> = ({
+  progress,
+  stage,
+  steps = DEFAULT_STEPS,
+  pagesCompleted,
+  pagesTarget,
+  modeLabel,
+}) => (
   <motion.div
     initial={{ opacity: 0, height: 0 }}
     animate={{ opacity: 1, height: "auto" }}
@@ -17,8 +27,17 @@ const ScrapeProgress: FC<Props> = ({ progress, stage, steps = DEFAULT_STEPS }) =
     className="w-full max-w-2xl mx-auto mt-6"
   >
     <div className="glass rounded-xl p-5">
-      <div className="flex justify-between text-sm mb-3">
-        <span className="text-muted-foreground">{stage}</span>
+      <div className="flex flex-wrap justify-between gap-3 text-sm mb-3">
+        <div>
+          <span className="text-muted-foreground">{stage}</span>
+          {(pagesTarget || modeLabel) && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {modeLabel ? `${modeLabel}` : ""}
+              {modeLabel && pagesTarget ? " · " : ""}
+              {pagesTarget ? `${pagesCompleted ?? 0}/${pagesTarget} pages` : ""}
+            </p>
+          )}
+        </div>
         <span className="text-primary font-mono">{progress}%</span>
       </div>
       <div className="h-2 bg-secondary rounded-full overflow-hidden">

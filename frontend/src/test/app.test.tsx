@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import App from "@/App";
 
 describe("App", () => {
-  it("renders the Phase 3 categorization view", () => {
+  it("renders the Phase 4 pagination view", () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -31,7 +31,7 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: /^scrapable$/i })).toBeInTheDocument();
-    expect(screen.getByText(/phase 3 auto-categorization engine/i)).toBeInTheDocument();
+    expect(screen.getByText(/phase 4 pagination control system/i)).toBeInTheDocument();
     fetchSpy.mockRestore();
   });
 });
